@@ -1,7 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
-#include <string>
+#include <cstring>
 #include <zlib.h>
 #include <cstdio>
 
