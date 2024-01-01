@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
         }
         try {
             std::string blob_sha = argc[4];
-            std::ifstream blob_file(".git/objects/" + blob_sha.insert("/", 2), std::ios::binary);
+            std::ifstream blob_file(".git/objects/" + blob_sha.insert(2, "/"), std::ios::binary);
             if (!blob_file.is_open()) {
                 std::cerr << "Failed to find blob.\n";
                 return EXIT_FAILURE;
