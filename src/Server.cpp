@@ -2,7 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <zlib.h>
+#include "zlib.h"
 #include <cstdio>
 #include <assert.h>
 
