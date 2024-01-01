@@ -1,9 +1,11 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
-#include <cstring>
+#include <string>
 #include <zlib.h>
 #include <cstdio>
+#include <assert.h>
+
 
 #define CHUNK 16384
 int inf(FILE *source, FILE *dest)
@@ -101,7 +103,7 @@ int main(int argc, char* argv[]) {
         }
         try {
             std::string blob_sha = argv[4];
-            FILE* blob_file = fopen(".git/objects/" + blob_sha.insert(2, "/"), std::ios::binary, "r");
+            FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), std::ios::binary, "r");
             FILE* customStdout = fdopen(1, "w");
             inf(blob_file, customStdout);
             
