@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
             if (ret != Z_OK)
                 return ret;
             
-            while (blob_file.read(in, CHUNK)) {
+            while (blob_file.read((char*)(&in[0]), CHUNK)) {
                 do {
                     strm.avail_in = fread(in, 1, CHUNK, source);
                     if (ferror(source)) {
