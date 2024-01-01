@@ -38,8 +38,8 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
     }  else if (command == "cat-file") {
-        if (argc < 4 || argc[3] != "-p") {
-            std::cerr << "-p argument missing.\n"
+        if (argc < 4 || argv[3] != "-p") {
+            std::cerr << "-p argument missing.\n";
         }
         try {
             std::string blob_sha = argc[4];
