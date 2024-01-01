@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "-p argument missing.\n";
         }
         try {
-            std::string blob_sha = argc[4];
+            std::string blob_sha = argv[4];
             std::ifstream blob_file(".git/objects/" + blob_sha.insert(2, "/"), std::ios::binary);
             if (!blob_file.is_open()) {
                 std::cerr << "Failed to find blob.\n";
