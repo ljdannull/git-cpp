@@ -11,6 +11,12 @@
 #define CHUNK 16384
 int inf(FILE *source, FILE *dest)
 {
+    // skip header
+    char type[8];
+    int size;
+    int header = 1;
+    int headerlen = 0;
+
     int ret;
     unsigned have;
     z_stream strm;
@@ -53,10 +59,16 @@ int inf(FILE *source, FILE *dest)
                 return ret;
             }
             have = CHUNK - strm.avail_out;
-            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+            if (header) {
+                sscanf((char*) (&out[0]), "%s %d\0", type, &size);
+                header = 0;
+                headerlen = strlen(type) + std::to_string(size).length() + 2;
+            }
+            if (fwrite(out + headerlen, 1, have - headerlen, dest) != have || ferror(dest)) {
                 (void)inflateEnd(&strm);
                 return Z_ERRNO;
             }
+            headerlen = 0;
         } while (strm.avail_out == 0);
 
         /* done when inflate() says it's done */
@@ -104,7 +116,6 @@ int main(int argc, char* argv[]) {
         try {
             std::string blob_sha = argv[3];
             FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
-            fscanf(blob_file, "%s %d\0", NULL, NULL);
             FILE* customStdout = fdopen(1, "w");
             inf(blob_file, customStdout);
 
