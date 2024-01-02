@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
         try {
             std::string blob_sha = argv[3];
             FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
-            // sscanf(NULL, "%s %d\0");
+            fscanf(blob_file, "%s %d\0", NULL, NULL);
             FILE* customStdout = fdopen(1, "w");
             inf(blob_file, customStdout);
 
