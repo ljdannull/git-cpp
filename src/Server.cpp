@@ -57,7 +57,6 @@ int hashobject(char* filepath) {
         return EXIT_FAILURE;
     }
 
-    // Loading the file into RAM is not ideal since it won't work for larger files
     std::string fileContent((std::istreambuf_iterator<char>(inputFile)), std::istreambuf_iterator<char>());
     int file_size = fileContent.length();
     std::string header = "blob " + std::to_string(file_size) + '\0';
@@ -89,6 +88,30 @@ int hashobject(char* filepath) {
     return EXIT_SUCCESS;
 }
 
+int lstree(char* tree_sha) {
+    std::string path = ".git/objects/";
+    path += std::string(tree_sha, strlen(tree_sha)).insert(2, "/");
+    // std::cout << path << "\n";
+    return catfile(path.c_str());
+    // FILE* source = fopen(path.c_str(), "r");
+    
+    // FILE* dest = fopen(".git/objects/tmp", "w");
+    // std::cout << source << "\n" << dest << "\n";
+    // std::cout << inf(source, dest);
+    // fseek(dest, 0, SEEK_SET);
+    // char line[256];
+    // // printf("%s\n", line);
+    // while (fgets(line, sizeof(line), dest) != NULL) {
+    //     printf("%s", line);
+    // }
+    // // printf("%s\n", line);
+    // fclose(source);
+    // fclose(dest);
+    // std::remove(".git/objects/tmp.txt");
+    
+    // return EXIT_SUCCESS;
+}
+
 int main(int argc, char* argv[]) {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     
@@ -103,14 +126,19 @@ int main(int argc, char* argv[]) {
        return gitinit();
     }  else if (command == "cat-file") {
         if (argc != 4 || strcmp(argv[2], "-p")) {
-            std::cerr << "-p argument missing.\n";
+            std::cerr << "Incorrect arguments.\n";
         }
         return catfile(argv[3]);
     } else if (command == "hash-object") {
         if (argc != 4 || strcmp(argv[2], "-w")) {
-            std::cerr << "-w argument missing.\n";
+            std::cerr << "Incorrect arguments.\n";
         }
         return hashobject(argv[3]);
+    } else if (command == "ls-tree") {
+        if (argc != 4 || strcmp(argv[2], "--name-only")) {
+            std::cerr << "Incorrect arguments.\n";
+        }
+        return lstree(argv[3]);
     } else {
         std::cerr << "Unknown command " << command << '\n';
         return EXIT_FAILURE;
