@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
             sscanf(NULL, "%s %d\0");
             FILE* customStdout = fdopen(1, "w");
             inf(blob_file, customStdout);
-            
+            return 0;
 
         } catch (const std::filesystem::filesystem_error& e) {
             std::cerr << e.what() << '\n';
