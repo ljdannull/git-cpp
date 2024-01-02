@@ -99,12 +99,12 @@ int main(int argc, char* argv[]) {
         }
     }  else if (command == "cat-file") {
         std::cout << "1.\n";
-        if (argc < 4 || argv[3] != "-p") {
+        if (argc < 4 || argv[2] != "-p") {
             std::cerr << "-p argument missing.\n";
         }
         std::cout << "1.\n";
         try {
-            std::string blob_sha = argv[4];
+            std::string blob_sha = argv[3];
             FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
             FILE* customStdout = fdopen(1, "w");
             inf(blob_file, customStdout);
