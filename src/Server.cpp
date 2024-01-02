@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
     }  else if (command == "cat-file") {
-        if (argc < 4 || argv[2] != "-p") {
+        if (argc != 4 || argv[2] != "-p") {
             std::cerr << "-p argument missing.\n";
         }
         try {
