@@ -98,11 +98,9 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
     }  else if (command == "cat-file") {
-        std::cout << "1.\n";
         if (argc < 4 || argv[2] != "-p") {
             std::cerr << "-p argument missing.\n";
         }
-        std::cout << "1.\n";
         try {
             std::string blob_sha = argv[3];
             FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
