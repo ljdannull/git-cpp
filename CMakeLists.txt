@@ -8,4 +8,4 @@ set(SOURCE_FILES src/Server.cpp)
 
 add_executable(server ${SOURCE_FILES})
 
-target_link_libraries(GzipTest ZLIB::ZLIB)
+target_link_libraries(git-starter-cpp ZLIB::ZLIB)
