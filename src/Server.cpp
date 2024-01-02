@@ -8,7 +8,7 @@
 #include <cstring>
 #include <openssl/sha.h>
 #include <filesystem>
-#include <zpipe.c>
+#include "zpipe.cpp"
 
 
 int main(int argc, char* argv[]) {
