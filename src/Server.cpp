@@ -69,7 +69,6 @@ int inf(FILE *source, FILE *dest)
 
 int main(int argc, char* argv[]) {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
-    std::cout << "Logs from your program will appear here!\n";
     
     if (argc < 2) {
         std::cerr << "No command provided.\n";
