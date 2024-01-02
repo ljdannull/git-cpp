@@ -5,6 +5,7 @@
 #include "zlib.h"
 #include <cstdio>
 #include <cassert>
+#include <cstring>
 
 
 #define CHUNK 16384
