@@ -1,7 +1,8 @@
+// Adapted from zpipe.c written by Mark Adler
+
 #define CHUNK 16384
 #define COMPRESSIONLEVEL 3
 
-// Adapted from zpipe.c written by Mark Adler
 int def(FILE *source, FILE *dest, int level)
 {
     
@@ -53,7 +54,6 @@ int def(FILE *source, FILE *dest, int level)
     return Z_OK;
 }
 
-// Adapted from zpipe.c written by Mark Adler
 int inf(FILE *source, FILE *dest)
 {
     char type[8];
