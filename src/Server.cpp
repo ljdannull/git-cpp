@@ -11,6 +11,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <ctime>
 #include "zpipe.cpp"
 
 
@@ -206,6 +207,21 @@ std::string writetree(std::string filepath, int verbose) {
     return hash;
 }
 
+std::string committree(std::string tree_sha, std::string commit_sha, std::string message) {
+    std::string contents;
+    std::time_t timestamp = std::time(NULL);
+    contents += "tree " + tree_sha + "\n";
+    contents += "parent " + commit_sha + "\n";
+    contents += "author Stan Smith <stan.smith@gmail.com> " + std::to_string(timestamp) + " -0500\n";
+    contents += "committer Stan Smith <stan.smith@gmail.com> " + std::to_string(timestamp) + " -0500\n";
+    contents += "\n" + message + "\n";
+    int bytes = contents.length();
+    contents = "commit " + std::to_string(bytes) + '\0' + contents;
+    std::string hash = gethash(contents);
+    store((char*)hash.c_str(), contents);
+    return hash;
+}
+
 int main(int argc, char* argv[]) {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     
@@ -239,6 +255,11 @@ int main(int argc, char* argv[]) {
         }
         std::cout << writetree(".", 1) << "\n";
         return EXIT_SUCCESS;
+    } else if (command == "commit-tree") {
+        if (argc != 7 || strcmp(argv[3], "-p") || strcmp(argv[5], "-m")) {
+            std::cerr << "Incorrect Arguments.\n";
+        }
+        std::cout << committree(argv[2], argv[4], argv[6]);
     } else {
         std::cerr << "Unknown command " << command << '\n';
         return EXIT_FAILURE;
