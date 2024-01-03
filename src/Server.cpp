@@ -172,7 +172,7 @@ std::string writetree(std::string filepath, int verbose) {
     std::vector<std::string> lines;
     for (const auto & entry : std::filesystem::directory_iterator(filepath)) {
         path = entry.path();
-        if (path.compare('./.git') == 0) {
+        if (path.compare("./.git") == 0) {
             continue;
         }
         if (path.compare("./server") == 0) {
