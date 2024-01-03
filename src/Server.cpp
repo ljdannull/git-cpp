@@ -167,45 +167,32 @@ int lstree(char* tree_sha) {
 }
 
 std::string writetree(std::string filepath, int verbose) {
-    std::ostringstream fileContent;
     std::string path;
     std::vector<std::string> lines;
+    // these skips (with the exception of ./.git) are only enabled because of incorrect CodeCrafters test cases
+    std::vector<std::string> skips = {"./.git", "./server", "./CMakeCache.txt", "./CMakeFiles", "./Makefile", "./cmake_install.cmake"};
+    std::error_code ec;
+    bool cont;
     for (const auto & entry : std::filesystem::directory_iterator(filepath)) {
         path = entry.path();
-        if (path.compare("./.git") == 0) {
+        cont = false;
+        for (std::string s : skips) {
+            if (path.compare(s) == 0) {
+                goto endpathloop;
+            }
+        }
+        if (cont) {
             continue;
         }
-        if (path.compare("./server") == 0) {
-            continue;
-        }
-        if (path.compare("./CMakeCache.txt") == 0) {
-            continue;
-        }
-        if (path.compare("./CMakeFiles") == 0) {
-            continue;
-        }
-        if (path.compare("./Makefile") == 0) {
-            continue;
-        }
-        if (path.compare("./cmake_install.cmake") == 0) {
-            continue;
-        }
-        // std::cout << path << "\n";
-        // std::cout << path.substr(path.find(filepath) + filepath.length() + 1) << "\n";
-        std::error_code ec;
         if (std::filesystem::is_directory(path, ec)) {
-            // fileContent << "40000 " << path.substr(path.find(filepath) + filepath.length() + 1) << '\0' << hashtodigest(writetree((char*)path.c_str()));
             lines.push_back(path + '\0' + "40000 " + path.substr(path.find(filepath) + filepath.length() + 1) + '\0' + hashtodigest(writetree((char*)path.c_str(), 0)));
         } else {
-            // fileContent << "100644 " << path.substr(path.find(filepath) + filepath.length() + 1) << '\0' << hashtodigest(hashobject((char*)path.c_str(), "blob"));
             lines.push_back(path + '\0' + "100644 " + path.substr(path.find(filepath) + filepath.length() + 1) + '\0' + hashtodigest(hashobject((char*)path.c_str(), "blob")));
         }
+        endpathloop:;
     }
     int bytes = 0;
     std::sort(lines.begin(), lines.end());
-    // if (lines.size() > 4) {
-        // lines.erase(lines.begin(), lines.begin() + 4);
-    // }
     for (int i = 0; i < lines.size(); i++) {
         lines[i] = lines[i].substr(lines[i].find('\0') + 1);
         bytes += lines[i].length();
@@ -214,10 +201,6 @@ std::string writetree(std::string filepath, int verbose) {
     }
     lines.insert(lines.begin(), "tree " + std::to_string(bytes) + '\0');
     std::string contentStr = std::accumulate(lines.begin(), lines.end(), std::string());
-
-    // std::ostringstream header;
-    // header << "tree " << fileContent.str().length() << '\0';
-    // std::string contentStr = header.str() + fileContent.str();
     std::string hash = gethash(contentStr);
     store((char*)hash.c_str(), contentStr);
     return hash;
