@@ -17,14 +17,17 @@ int def(FILE *source, FILE *dest, int level)
     strm.zfree = Z_NULL;
     strm.opaque = Z_NULL;
     ret = deflateInit(&strm, level);
-    if (ret != Z_OK)
+    if (ret != Z_OK) {
+        std::cerr << "Error in deflateInit.\n";
         return ret;
+    }
 
     /* compress until end of file */
     do {
         strm.avail_in = fread(in, 1, CHUNK, source);
         if (ferror(source)) {
             (void)deflateEnd(&strm);
+            std::cerr << "Error in fread.\n";
             return Z_ERRNO;
         }
         flush = feof(source) ? Z_FINISH : Z_NO_FLUSH;
@@ -40,6 +43,7 @@ int def(FILE *source, FILE *dest, int level)
             have = CHUNK - strm.avail_out;
             if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
                 (void)deflateEnd(&strm);
+                std::cerr << "Error in fwrite.\n";
                 return Z_ERRNO;
             }
         } while (strm.avail_out == 0);
@@ -54,11 +58,10 @@ int def(FILE *source, FILE *dest, int level)
     return Z_OK;
 }
 
-int inf(FILE *source, FILE *dest)
+int inf(FILE *source, FILE *dest, int header)
 {
     char type[8];
     int size;
-    int header = 1;
     int headerlen = 0;
 
     int ret;

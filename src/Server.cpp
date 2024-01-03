@@ -8,6 +8,8 @@
 #include <cstring>
 #include <openssl/sha.h>
 #include <filesystem>
+#include <vector>
+#include <algorithm>
 #include "zpipe.cpp"
 
 
@@ -39,7 +41,7 @@ int catfile(char* filepath) {
         std::string blob_sha = filepath;
         FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
         FILE* customStdout = fdopen(1, "w");
-        inf(blob_file, customStdout);
+        inf(blob_file, customStdout, 1);
         fclose(blob_file);
         fclose(customStdout);
 
@@ -91,25 +93,51 @@ int hashobject(char* filepath) {
 int lstree(char* tree_sha) {
     std::string path = ".git/objects/";
     path += std::string(tree_sha, strlen(tree_sha)).insert(2, "/");
-    // std::cout << path << "\n";
-    return catfile(path.c_str());
-    // FILE* source = fopen(path.c_str(), "r");
     
-    // FILE* dest = fopen(".git/objects/tmp", "w");
-    // std::cout << source << "\n" << dest << "\n";
-    // std::cout << inf(source, dest);
-    // fseek(dest, 0, SEEK_SET);
-    // char line[256];
-    // // printf("%s\n", line);
-    // while (fgets(line, sizeof(line), dest) != NULL) {
-    //     printf("%s", line);
-    // }
-    // // printf("%s\n", line);
-    // fclose(source);
-    // fclose(dest);
-    // std::remove(".git/objects/tmp.txt");
+    FILE* source = fopen(path.c_str(), "r");
+    FILE* dest = fopen(".git/objects/tmp", "w");
     
-    // return EXIT_SUCCESS;
+    inf(source, dest, 0);
+    fseek(dest, 0L, SEEK_SET);
+    fclose(source);
+    fclose(dest);
+
+    std::ifstream input(".git/objects/tmp", std::ios::binary );
+    std::vector<char> buffer(std::istreambuf_iterator<char>(input), {});
+    input.close();
+    std::string str(buffer.begin(), buffer.end());
+    str = str.substr(str.find('\0') + 1);
+    std::vector<char> new_buffer;
+    int skip = 0;
+    for (char c : str) {
+        if (skip) {
+            skip = std::max(skip - 1, 0);
+            continue;
+        }
+        if ((int)c == 0) {
+            skip = 20;
+        }
+        new_buffer.push_back(c);
+    }
+    std::string newstr(new_buffer.begin(), new_buffer.end());
+    std::istringstream iss(newstr);
+    std::string s;
+
+    std::vector<std::string> names;
+    int space;
+    while (std::getline(iss, s, '\0')) {
+        space = s.find(' ');
+        names.push_back(s.substr(space + 1));
+        
+    }
+    std::sort(names.begin(), names.end());
+    for (std::string i : names) {
+        std::cout << i << "\n";
+    }
+    
+    std::remove(".git/objects/tmp");
+
+    return EXIT_SUCCESS;
 }
 
 int main(int argc, char* argv[]) {
