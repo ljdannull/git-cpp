@@ -52,11 +52,11 @@ int catfile(char* filepath) {
     return EXIT_SUCCESS;  
 }
 
-int hashobject(char* filepath) {
+std::string hashobject(char* filepath) {
     std::ifstream inputFile(filepath);
     if (!inputFile.is_open()) {
         std::cerr << "Error opening file: " << filepath << std::endl;
-        return EXIT_FAILURE;
+        return NULL;
     }
 
     std::string fileContent((std::istreambuf_iterator<char>(inputFile)), std::istreambuf_iterator<char>());
@@ -77,17 +77,18 @@ int hashobject(char* filepath) {
     if (!std::filesystem::exists(folder)) {
         std::filesystem::create_directories(folder);
     }
-    std::string tmp = hash;
-    FILE* dest = fopen((folder + std::string({hash + 2, 39})).c_str(), "w");
-    def(source, dest, COMPRESSIONLEVEL);
-
-    std::cout << hash << "\n";;
+    std::string destpath = folder + std::string({hash + 2, 39});
+    if (! std::filesystem::exists(destpath)) {
+        FILE* dest = fopen(destpath.c_str(), "w");
+        def(source, dest, COMPRESSIONLEVEL);
+        fclose(dest);
+    }
 
     inputFile.close();
     fclose(source);
-    fclose(dest);
+    
 
-    return EXIT_SUCCESS;
+    return hash;
 }
 
 int lstree(char* tree_sha) {
@@ -109,6 +110,8 @@ int lstree(char* tree_sha) {
     str = str.substr(str.find('\0') + 1);
     std::vector<char> new_buffer;
     int skip = 0;
+
+    // get rid of the hash digests
     for (char c : str) {
         if (skip) {
             skip = std::max(skip - 1, 0);
@@ -161,7 +164,7 @@ int main(int argc, char* argv[]) {
         if (argc != 4 || strcmp(argv[2], "-w")) {
             std::cerr << "Incorrect arguments.\n";
         }
-        return hashobject(argv[3]);
+        std::cout <<  hashobject(argv[3]) << "\n";
     } else if (command == "ls-tree") {
         if (argc != 4 || strcmp(argv[2], "--name-only")) {
             std::cerr << "Incorrect arguments.\n";
