@@ -268,9 +268,6 @@ int clone(std::string url, std::string dir) {
     }
     postdata += "00000009done\n";
     curl_easy_setopt(handle, CURLOPT_POSTFIELDS, postdata.c_str());
-    
-    // std::cout << url + "/git-upload-pack";
-    // std::cout << postdata;
 
     std::string pack;
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*)&pack);
@@ -286,9 +283,6 @@ int clone(std::string url, std::string dir) {
     int pos = 0;
     std::string lengthstr;
     int length = 0;
-    // for (int i = 0; i < pack.length(); i++) {
-    //     std::cout << std::bitset<8>(pack[i]) << "\n";
-    // }
     type = (pack[pos] & 112) >> 4; // 112 is 11100000 so this gets the first 3 bits
     length = length | (pack[pos] & 0x0F); // take the last 4 bits
     if (pack[pos] & 0x80) { // if the type bit starts with 0 then the last 4 bits are simply the length
@@ -302,38 +296,13 @@ int clone(std::string url, std::string dir) {
         length = length | pack[pos]; // set the leftmost bit to 1 so it's ignored, and do the same thing
     }
     pos++;
-    // for (int i = 0; i < 20; i++) {
-    //     std::cout << std::bitset<8>(pack.substr(pos, length).c_str()[i]) << "\n";
-    // }
-    // FILE* customStdout = fdopen(1, "w");
+    FILE* customStdout = fdopen(1, "w");
 
-    // FILE* source = fmemopen((void*)pack.substr(pos, 160).c_str(), 160, "r");
-    // std::cout << inf(source, customStdout, 0, 1) << "\n";
-    // inf(source, customStdout, 0, 1);
-    // std::cout << type << " " << pos << " " << length << "\n";
+    std::ofstream outputFile("tmp");
+    outputFile << pack.substr(pos);
+    FILE* source = fopen("tmp", "r");
 
-    int ret;
-    unsigned have;
-    z_stream strm;
-    unsigned char in[16384];
-    unsigned char out[16384];
-
-    /* allocate inflate state */
-    strm.zalloc = Z_NULL;
-    strm.zfree = Z_NULL;
-    strm.opaque = Z_NULL;
-    strm.avail_in = 0;
-    strm.next_in = Z_NULL;
-    ret = inflateInit(&strm);
-    strm.avail_in = pack.length() - pos;
-    for (int i = 0; i < 16384; i++) {
-        in[i] = pack[pos + i];
-    }
-    strm.next_in = in;
-    strm.avail_out = 16384;
-    strm.next_out = out;
-    std::cout << inflate(&strm, Z_NO_FLUSH) << "\n";
-    std::cout << out << "\n" << strlen(out) << "\n";
+    inf(source, customStdout, 0, 1);
 
     return EXIT_SUCCESS;
 }

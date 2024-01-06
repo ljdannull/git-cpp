@@ -76,22 +76,15 @@ int inf(FILE *source, FILE *dest, int header, int zh)
     strm.opaque = Z_NULL;
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
-    // if (zh) {
-    //     ret = inflateInit2(&strm, -MAX_WBITS);
-    // } else {
+    
     ret = inflateInit(&strm);
-    // }
+    
     if (ret != Z_OK)
         return ret;
 
     /* decompress until deflate stream ends or end of file */
     do {
         strm.avail_in = fread(in, 1, CHUNK, source);
-        // if (zh) {
-        //     for (int i = 0; i < 20; i++) {
-        //         std::cout << std::bitset<8>(in[i]) << "\n";
-        //     }
-        // }
         if (ferror(source)) {
             (void)inflateEnd(&strm);
             return Z_ERRNO;
