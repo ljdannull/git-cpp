@@ -12,16 +12,18 @@
 #include <algorithm>
 #include <numeric>
 #include <ctime>
+#include <curl/curl.h>
+#include <bitset>
 #include "zpipe.cpp"
 
 
-int gitinit() {
+int gitinit(std::string dir) {
      try {
-        std::filesystem::create_directory(".git");
-        std::filesystem::create_directory(".git/objects");
-        std::filesystem::create_directory(".git/refs");
+        std::filesystem::create_directory(dir + '/' + ".git");
+        std::filesystem::create_directory(dir + '/' + ".git/objects");
+        std::filesystem::create_directory(dir + '/' + ".git/refs");
 
-        std::ofstream headFile(".git/HEAD");
+        std::ofstream headFile(dir + '/' + ".git/HEAD");
         if (headFile.is_open()) {
             headFile << "ref: refs/heads/master\n";
             headFile.close();
@@ -38,12 +40,12 @@ int gitinit() {
     return EXIT_SUCCESS;
 }
 
-int catfile(char* filepath) {
+int catfile(const char* filepath, int header) {
     try {
         std::string blob_sha = filepath;
         FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
         FILE* customStdout = fdopen(1, "w");
-        inf(blob_file, customStdout, 1);
+        inf(blob_file, customStdout, header, 0);
         fclose(blob_file);
         fclose(customStdout);
 
@@ -65,7 +67,7 @@ std::string gethash(std::string fileContentHeader) {
     return std::string(hash);
 }
 
-void store(char* hash, std::string fileContentHeader) {
+void store(const char* hash, std::string fileContentHeader) {
     FILE* source = fmemopen((void *)fileContentHeader.c_str(), fileContentHeader.length(), "r");
     std::string folder(hash, 2);
     folder = ".git/objects/" + folder + '/';
@@ -81,7 +83,7 @@ void store(char* hash, std::string fileContentHeader) {
     fclose(source);
 }
 
-std::string hashobject(char* filepath, std::string type) {
+std::string hashobject(const char* filepath, std::string type) {
     std::ifstream inputFile(filepath);
     if (!inputFile.is_open()) {
         std::cerr << "Error opening file: " << filepath << std::endl;
@@ -95,7 +97,7 @@ std::string hashobject(char* filepath, std::string type) {
     
     std::string hash = gethash(fileContentHeader);
 
-    store((char*)hash.c_str(), fileContentHeader);
+    store(hash.c_str(), fileContentHeader);
 
     inputFile.close();
     
@@ -115,14 +117,14 @@ std::string hashtodigest(std::string input) {
     return condensed;
 }
 
-int lstree(char* tree_sha) {
+int lstree(const char* tree_sha) {
     std::string path = ".git/objects/";
     path += std::string(tree_sha, strlen(tree_sha)).insert(2, "/");
     
     FILE* source = fopen(path.c_str(), "r");
     FILE* dest = fopen(".git/objects/tmp", "w");
-    
-    inf(source, dest, 0);
+
+    inf(source, dest, 0, 0);
     fseek(dest, 0L, SEEK_SET);
     fclose(source);
     fclose(dest);
@@ -186,9 +188,9 @@ std::string writetree(std::string filepath, int verbose) {
             continue;
         }
         if (std::filesystem::is_directory(path, ec)) {
-            lines.push_back(path + '\0' + "40000 " + path.substr(path.find(filepath) + filepath.length() + 1) + '\0' + hashtodigest(writetree((char*)path.c_str(), 0)));
+            lines.push_back(path + '\0' + "40000 " + path.substr(path.find(filepath) + filepath.length() + 1) + '\0' + hashtodigest(writetree(path.c_str(), 0)));
         } else {
-            lines.push_back(path + '\0' + "100644 " + path.substr(path.find(filepath) + filepath.length() + 1) + '\0' + hashtodigest(hashobject((char*)path.c_str(), "blob")));
+            lines.push_back(path + '\0' + "100644 " + path.substr(path.find(filepath) + filepath.length() + 1) + '\0' + hashtodigest(hashobject(path.c_str(), "blob")));
         }
         endpathloop:;
     }
@@ -197,13 +199,11 @@ std::string writetree(std::string filepath, int verbose) {
     for (int i = 0; i < lines.size(); i++) {
         lines[i] = lines[i].substr(lines[i].find('\0') + 1);
         bytes += lines[i].length();
-        std::cerr << lines[i].substr(0, lines[i].find('\0')) << "\n";
-        
     }
     lines.insert(lines.begin(), "tree " + std::to_string(bytes) + '\0');
     std::string contentStr = std::accumulate(lines.begin(), lines.end(), std::string());
     std::string hash = gethash(contentStr);
-    store((char*)hash.c_str(), contentStr);
+    store(hash.c_str(), contentStr);
     return hash;
 }
 
@@ -218,8 +218,124 @@ std::string committree(std::string tree_sha, std::string commit_sha, std::string
     int bytes = contents.length();
     contents = "commit " + std::to_string(bytes) + '\0' + contents;
     std::string hash = gethash(contents);
-    store((char*)hash.c_str(), contents);
+    store(hash.c_str(), contents);
     return hash;
+}
+
+static size_t cb(void *data, size_t size, size_t nmemb, void *clientp) {
+    size_t realsize = size * nmemb;
+    std::string text((char*) data, nmemb);
+    std::vector<std::string>* hashes = (std::vector<std::string>*)clientp;
+    if (text.find("service=git-upload-pack") == -1) {
+        int pos = text.find("\n");
+        while (pos != -1) {
+            hashes->push_back(text.substr(pos + 5, 40)); // +5 skip newline and first 4 bytes are not useful
+            pos = text.find("\n", pos + 1);
+        }
+        hashes->pop_back(); // remove 0000 end signal
+    }
+    
+    return realsize;
+}
+
+static size_t readpack(void *data, size_t size, size_t nmemb, void *clientp) {
+    std::string* pack = (std::string*)clientp;
+    *pack += std::string((char*) data, nmemb);
+    return size * nmemb;
+}
+
+int clone(std::string url, std::string dir) {
+
+    url = "https://github.com/codecrafters-io/git-sample-3";
+
+
+    // std::filesystem::create_directories(dir);
+    CURL* handle = curl_easy_init();
+    curl_easy_setopt(handle, CURLOPT_URL, (url + "/info/refs?service=git-upload-pack").c_str());
+    
+    // curl_easy_setopt(handle, CURLOPT_URL, "https://github.com/codecrafters-io/git-sample-3/info/refs?service=git-upload-pack");
+    
+    std::vector<std::string> refs;
+    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, cb);
+    curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*) &refs);
+    curl_easy_perform(handle);
+
+    curl_easy_reset(handle);
+    curl_easy_setopt(handle, CURLOPT_URL, (url + "/git-upload-pack").c_str());
+    std::string postdata;
+    for (std::string s : refs) {
+        postdata += "0032want " + s + "\n";
+    }
+    postdata += "00000009done\n";
+    curl_easy_setopt(handle, CURLOPT_POSTFIELDS, postdata.c_str());
+    
+    // std::cout << url + "/git-upload-pack";
+    // std::cout << postdata;
+
+    std::string pack;
+    curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*)&pack);
+    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, readpack);
+    struct curl_slist *list = NULL;
+    list = curl_slist_append(list, "Content-Type: application/x-git-upload-pack-request");
+    curl_easy_setopt(handle, CURLOPT_HTTPHEADER, list);
+    curl_easy_perform(handle);
+
+    curl_easy_cleanup(handle);
+    pack = pack.substr(20, pack.length() - 40); // skip 8 byte http header, 12 byte pack header, 20 byte pack trailer
+    int type;
+    int pos = 0;
+    std::string lengthstr;
+    int length = 0;
+    // for (int i = 0; i < pack.length(); i++) {
+    //     std::cout << std::bitset<8>(pack[i]) << "\n";
+    // }
+    type = (pack[pos] & 112) >> 4; // 112 is 11100000 so this gets the first 3 bits
+    length = length | (pack[pos] & 0x0F); // take the last 4 bits
+    if (pack[pos] & 0x80) { // if the type bit starts with 0 then the last 4 bits are simply the length
+        pos++;
+        while (pack[pos] & 0x80) { // while leftmost bit is 1
+            length = length << 7;
+            length = length | (pack[pos] & 0x7F); // flip first bit to 0 si it's ignored, then we append the other 7 bits to the integer
+            pos++;
+        }
+        length = length << 7;
+        length = length | pack[pos]; // set the leftmost bit to 1 so it's ignored, and do the same thing
+    }
+    pos++;
+    // for (int i = 0; i < 20; i++) {
+    //     std::cout << std::bitset<8>(pack.substr(pos, length).c_str()[i]) << "\n";
+    // }
+    // FILE* customStdout = fdopen(1, "w");
+
+    // FILE* source = fmemopen((void*)pack.substr(pos, 160).c_str(), 160, "r");
+    // std::cout << inf(source, customStdout, 0, 1) << "\n";
+    // inf(source, customStdout, 0, 1);
+    // std::cout << type << " " << pos << " " << length << "\n";
+
+    int ret;
+    unsigned have;
+    z_stream strm;
+    unsigned char in[16384];
+    unsigned char out[16384];
+
+    /* allocate inflate state */
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    strm.avail_in = 0;
+    strm.next_in = Z_NULL;
+    ret = inflateInit(&strm);
+    strm.avail_in = pack.length() - pos;
+    for (int i = 0; i < 16384; i++) {
+        in[i] = pack[pos + i];
+    }
+    strm.next_in = in;
+    strm.avail_out = 16384;
+    strm.next_out = out;
+    std::cout << inflate(&strm, Z_NO_FLUSH) << "\n";
+    std::cout << out << "\n" << strlen(out) << "\n";
+
+    return EXIT_SUCCESS;
 }
 
 int main(int argc, char* argv[]) {
@@ -233,33 +349,44 @@ int main(int argc, char* argv[]) {
     std::string command = argv[1];
     
     if (command == "init") {
-       return gitinit();
-    }  else if (command == "cat-file") {
+       return gitinit(".");
+    } else if (command == "cat-file") {
         if (argc != 4 || strcmp(argv[2], "-p")) {
             std::cerr << "Incorrect arguments.\n";
+            return EXIT_FAILURE;
         }
-        return catfile(argv[3]);
+        return catfile(argv[3], 1);
     } else if (command == "hash-object") {
         if (argc != 4 || strcmp(argv[2], "-w")) {
             std::cerr << "Incorrect arguments.\n";
+            return EXIT_FAILURE;
         }
         std::cout <<  hashobject(argv[3], "blob") << "\n";
     } else if (command == "ls-tree") {
         if (argc != 4 || strcmp(argv[2], "--name-only")) {
             std::cerr << "Incorrect arguments.\n";
+            return EXIT_FAILURE;
         }
         return lstree(argv[3]);
     } else if (command == "write-tree") {
         if (argc != 2) {
             std::cerr << "Too many arguments.\n";
+            return EXIT_FAILURE;
         }
         std::cout << writetree(".", 1) << "\n";
         return EXIT_SUCCESS;
     } else if (command == "commit-tree") {
         if (argc != 7 || strcmp(argv[3], "-p") || strcmp(argv[5], "-m")) {
             std::cerr << "Incorrect Arguments.\n";
+            return EXIT_FAILURE;
         }
         std::cout << committree(argv[2], argv[4], argv[6]);
+    } else if (command == "clone") {
+        if (argc != 4) {
+            std::cerr << "Incorrect Arguments.\n";
+            return EXIT_FAILURE;
+        }
+        return clone(argv[2], argv[3]);
     } else {
         std::cerr << "Unknown command " << command << '\n';
         return EXIT_FAILURE;

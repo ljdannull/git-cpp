@@ -58,7 +58,7 @@ int def(FILE *source, FILE *dest, int level)
     return Z_OK;
 }
 
-int inf(FILE *source, FILE *dest, int header)
+int inf(FILE *source, FILE *dest, int header, int zh)
 {
     char type[8];
     int size;
@@ -76,13 +76,22 @@ int inf(FILE *source, FILE *dest, int header)
     strm.opaque = Z_NULL;
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
+    // if (zh) {
+    //     ret = inflateInit2(&strm, -MAX_WBITS);
+    // } else {
     ret = inflateInit(&strm);
+    // }
     if (ret != Z_OK)
         return ret;
 
     /* decompress until deflate stream ends or end of file */
     do {
         strm.avail_in = fread(in, 1, CHUNK, source);
+        // if (zh) {
+        //     for (int i = 0; i < 20; i++) {
+        //         std::cout << std::bitset<8>(in[i]) << "\n";
+        //     }
+        // }
         if (ferror(source)) {
             (void)inflateEnd(&strm);
             return Z_ERRNO;
@@ -96,12 +105,14 @@ int inf(FILE *source, FILE *dest, int header)
             strm.avail_out = CHUNK;
             strm.next_out = out;
             ret = inflate(&strm, Z_NO_FLUSH);
+            
             assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
             switch (ret) {
             case Z_NEED_DICT:
                 ret = Z_DATA_ERROR;     /* and fall through */
             case Z_DATA_ERROR:
             case Z_MEM_ERROR:
+                std::cerr << strm.msg;
                 (void)inflateEnd(&strm);
                 return ret;
             }
