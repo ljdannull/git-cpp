@@ -249,11 +249,11 @@ int clone(std::string url, std::string dir) {
     url = "https://github.com/codecrafters-io/git-sample-3";
 
 
-    // std::filesystem::create_directories(dir);
+    std::filesystem::create_directories(dir);
+    gitinit(dir);
+
     CURL* handle = curl_easy_init();
     curl_easy_setopt(handle, CURLOPT_URL, (url + "/info/refs?service=git-upload-pack").c_str());
-    
-    // curl_easy_setopt(handle, CURLOPT_URL, "https://github.com/codecrafters-io/git-sample-3/info/refs?service=git-upload-pack");
     
     std::vector<std::string> refs;
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, cb);
@@ -298,11 +298,13 @@ int clone(std::string url, std::string dir) {
     pos++;
     FILE* customStdout = fdopen(1, "w");
 
-    std::ofstream outputFile("tmp");
+    std::ofstream outputFile(dir + "/.git/tmp");
     outputFile << pack.substr(pos);
-    FILE* source = fopen("tmp", "r");
+    FILE* source = fopen((dir + "/.git/tmp").c_str(), "r");
 
     inf(source, customStdout, 0, 1);
+
+    fclose(source);
 
     return EXIT_SUCCESS;
 }
