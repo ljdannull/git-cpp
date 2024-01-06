@@ -15,6 +15,7 @@
 #include <curl/curl.h>
 #include <bitset>
 #include "zpipe.cpp"
+#include "zlib_str.cpp"
 
 
 int gitinit(std::string dir) {
@@ -244,6 +245,8 @@ static size_t readpack(void *data, size_t size, size_t nmemb, void *clientp) {
     return size * nmemb;
 }
 
+
+
 int clone(std::string url, std::string dir) {
 
     url = "https://github.com/codecrafters-io/git-sample-3";
@@ -270,6 +273,7 @@ int clone(std::string url, std::string dir) {
     curl_easy_setopt(handle, CURLOPT_POSTFIELDS, postdata.c_str());
 
     std::string pack;
+    
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*)&pack);
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, readpack);
     struct curl_slist *list = NULL;
@@ -278,33 +282,46 @@ int clone(std::string url, std::string dir) {
     curl_easy_perform(handle);
 
     curl_easy_cleanup(handle);
+
+    int num_objects = 0;
+    for (int i = 16; i < 20; i++) {
+        num_objects = num_objects << 8;
+        num_objects = num_objects | (unsigned char)pack[i];
+    }
     pack = pack.substr(20, pack.length() - 40); // skip 8 byte http header, 12 byte pack header, 20 byte pack trailer
+    
+    
     int type;
     int pos = 0;
     std::string lengthstr;
-    int length = 0;
-    type = (pack[pos] & 112) >> 4; // 112 is 11100000 so this gets the first 3 bits
-    length = length | (pack[pos] & 0x0F); // take the last 4 bits
-    if (pack[pos] & 0x80) { // if the type bit starts with 0 then the last 4 bits are simply the length
-        pos++;
-        while (pack[pos] & 0x80) { // while leftmost bit is 1
-            length = length << 7;
-            length = length | (pack[pos] & 0x7F); // flip first bit to 0 si it's ignored, then we append the other 7 bits to the integer
+    int length;
+    std::vector<std::string> hashes;
+    for (int i = 0; i < num_objects; i++) {
+        length = 0;
+        type = (pack[pos] & 112) >> 4; // 112 is 11100000 so this gets the first 3 bits
+        length = length | (pack[pos] & 0x0F); // take the last 4 bits
+        if (pack[pos] & 0x80) { // if the type bit starts with 0 then the last 4 bits are simply the length
             pos++;
+            while (pack[pos] & 0x80) { // while leftmost bit is 1
+                length = length << 7;
+                length = length | (pack[pos] & 0x7F); // flip first bit to 0 si it's ignored, then we append the other 7 bits to the integer
+                pos++;
+            }
+            length = length << 7;
+            length = length | pack[pos]; // set the leftmost bit to 1 so it's ignored, and do the same thing
         }
-        length = length << 7;
-        length = length | pack[pos]; // set the leftmost bit to 1 so it's ignored, and do the same thing
+        pos++;
+        
+        if (type == 6) {
+
+        } else if (type == 7) {
+            pos += 20;
+        }
+        std::string contents = decompress_string(pack.substr(pos));
+        std::cout << contents.length() << "\n";
+        std::string compressed = compress_string(contents)
+        pos += compressed.length();
     }
-    pos++;
-    FILE* customStdout = fdopen(1, "w");
-
-    std::ofstream outputFile(dir + "/.git/tmp");
-    outputFile << pack.substr(pos);
-    FILE* source = fopen((dir + "/.git/tmp").c_str(), "r");
-
-    inf(source, customStdout, 0, 1);
-
-    fclose(source);
 
     return EXIT_SUCCESS;
 }

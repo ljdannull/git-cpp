@@ -34,7 +34,7 @@ pack_resp = pack_resp.read()
 # return
 entries_bytes = pack_resp[16:20]
 num_entries = int.from_bytes(entries_bytes, byteorder="big")
-#print("entries count", num_entries)
+print("entries count", num_entries)
 data = pack_resp[20:-20]
 objs = {}
 seek = 0
@@ -54,8 +54,8 @@ while objs_count != num_entries:
     if obj_type < 7:
         # for i in range(20):
         #     print(bin(data[i]))
-        content = zlib.decompress(data[seek:seek+160])
-        print(content)
+        content = zlib.decompress(data[seek:])
+        # print(content)
         obj_type_to_str = {1: "commit", 2: "tree", 3: "blob"}
         obj_write_data = (
             f"{obj_type_to_str[obj_type]} {len(content)}\0".encode()
@@ -72,35 +72,38 @@ while objs_count != num_entries:
         #     f.write(zlib.compress(obj_write_data))
         # objs[commit_hash] = (content, obj_type)
         compressed_len = zlib.compress(content)
-        #print(len(compressed_len))
-        break
+        if seek == 19942:
+            print("\n".join([bin(i)[2:].zfill(8) for i in compressed_len]))
+        print(seek, len(compressed_len))
         seek += len(compressed_len)
     else:
         # num_entries -= 1
         # 20 byte header for sha1 base reference
         k = data[seek : seek + 20]
         #print(k.hex())
-        obs_elem = objs[k.hex()]
-        base = obs_elem[0]
+        # obs_elem = objs[k.hex()]
+        # base = obs_elem[0]
         seek += 20
         delta = zlib.decompress(data[seek:])
         compressed_data = zlib.compress(delta)
-        content = undeltify(delta, base)
+        # content = undeltify(delta, base)
         # print(content)
-        obj_type = obs_elem[1]
-        obj_type_to_str = {1: "commit", 2: "tree", 3: "blob"}
-        obj_write_data = (
-            f"{obj_type_to_str[obj_type]} {len(content)}\0".encode()
-        )
-        obj_write_data += content
-        commit_hash = hashlib.sha1(obj_write_data).hexdigest()
-        f_path = target_dir + f"/.git/objects/{commit_hash[:2]}"
-        if not os.path.exists(f_path):
-            os.mkdir(f_path)
-        with open(
-            target_dir + f"/.git/objects/{commit_hash[:2]}/{commit_hash[2:]}",
-            "wb",
-        ) as f:
-            f.write(zlib.compress(obj_write_data))
-        objs[commit_hash] = (content, obj_type)
+        # obj_type = obs_elem[1]
+        # obj_type_to_str = {1: "commit", 2: "tree", 3: "blob"}
+        # obj_write_data = (
+        #     f"{obj_type_to_str[obj_type]} {len(content)}\0".encode()
+        # )
+        # obj_write_data += content
+        # commit_hash = hashlib.sha1(obj_write_data).hexdigest()
+        # f_path = target_dir + f"/.git/objects/{commit_hash[:2]}"
+        # if not os.path.exists(f_path):
+        #     os.mkdir(f_path)
+        # with open(
+        #     target_dir + f"/.git/objects/{commit_hash[:2]}/{commit_hash[2:]}",
+        #     "wb",
+        # ) as f:
+        #     f.write(zlib.compress(obj_write_data))
+        # objs[commit_hash] = (content, obj_type)
+        print(seek, len(compressed_data))
         seek += len(compressed_data)
+        
