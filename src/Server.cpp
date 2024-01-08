@@ -41,14 +41,12 @@ int gitinit(std::string dir) {
     return EXIT_SUCCESS;
 }
 
-int catfile(const char* filepath, int header) {
+int catfile(const char* filepath, int header, std::string dir, FILE* dest) {
     try {
         std::string blob_sha = filepath;
-        FILE* blob_file = fopen((".git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
-        FILE* customStdout = fdopen(1, "w");
-        inf(blob_file, customStdout, header, 0);
+        FILE* blob_file = fopen((dir + "/.git/objects/" + blob_sha.insert(2, "/")).c_str(), "r");
+        inf(blob_file, dest, header, 0);
         fclose(blob_file);
-        fclose(customStdout);
 
     } catch (const std::filesystem::filesystem_error& e) {
         std::cerr << e.what() << '\n';
@@ -57,9 +55,7 @@ int catfile(const char* filepath, int header) {
     return EXIT_SUCCESS;  
 }
 
-std::string gethash(std::string fileContentHeader) {
-    unsigned char digest[20];
-    SHA1((const unsigned char*)fileContentHeader.c_str(), fileContentHeader.length(), digest);
+std::string digesttohash(std::string digest) {
     char hash[41];
     for (int i = 0; i < 20; i++) {
         sprintf(hash + i * 2, "%02x", (unsigned char)digest[i]);
@@ -68,10 +64,16 @@ std::string gethash(std::string fileContentHeader) {
     return std::string(hash);
 }
 
-void store(const char* hash, std::string fileContentHeader) {
+std::string gethash(std::string fileContentHeader) {
+    unsigned char digest[20];
+    SHA1((const unsigned char*)fileContentHeader.c_str(), fileContentHeader.length(), digest);
+    return digesttohash(std::string((const char*) digest, 20));
+}
+
+void store(const char* hash, std::string fileContentHeader, std::string dir) {
     FILE* source = fmemopen((void *)fileContentHeader.c_str(), fileContentHeader.length(), "r");
     std::string folder(hash, 2);
-    folder = ".git/objects/" + folder + '/';
+    folder = dir + "/.git/objects/" + folder + '/';
     if (!std::filesystem::exists(folder)) {
         std::filesystem::create_directories(folder);
     }
@@ -98,7 +100,7 @@ std::string hashobject(const char* filepath, std::string type) {
     
     std::string hash = gethash(fileContentHeader);
 
-    store(hash.c_str(), fileContentHeader);
+    store(hash.c_str(), fileContentHeader, ".");
 
     inputFile.close();
     
@@ -204,7 +206,7 @@ std::string writetree(std::string filepath, int verbose) {
     lines.insert(lines.begin(), "tree " + std::to_string(bytes) + '\0');
     std::string contentStr = std::accumulate(lines.begin(), lines.end(), std::string());
     std::string hash = gethash(contentStr);
-    store(hash.c_str(), contentStr);
+    store(hash.c_str(), contentStr, ".");
     return hash;
 }
 
@@ -219,23 +221,24 @@ std::string committree(std::string tree_sha, std::string commit_sha, std::string
     int bytes = contents.length();
     contents = "commit " + std::to_string(bytes) + '\0' + contents;
     std::string hash = gethash(contents);
-    store(hash.c_str(), contents);
+    store(hash.c_str(), contents, ".");
     return hash;
 }
 
 static size_t cb(void *data, size_t size, size_t nmemb, void *clientp) {
     size_t realsize = size * nmemb;
     std::string text((char*) data, nmemb);
-    std::vector<std::string>* hashes = (std::vector<std::string>*)clientp;
+    // std::vector<std::string>* hashes = (std::vector<std::string>*)clientp;
+    std::string* packhash = (std::string*)clientp;
     if (text.find("service=git-upload-pack") == -1) {
-        int pos = text.find("\n");
-        while (pos != -1) {
-            hashes->push_back(text.substr(pos + 5, 40)); // +5 skip newline and first 4 bytes are not useful
-            pos = text.find("\n", pos + 1);
-        }
-        hashes->pop_back(); // remove 0000 end signal
+        *packhash = text.substr(text.find("refs/heads/master\n") - 41, 40);
+        // int pos = text.find("\n");
+        // while (pos != -1) {
+        //     hashes->push_back(text.substr(pos + 5, 40)); // +5 skip newline and first 4 bytes are not useful
+        //     pos = text.find("\n", pos + 1);
+        // }
+        // hashes->pop_back(); // remove 0000 end signal
     }
-    
     return realsize;
 }
 
@@ -245,30 +248,137 @@ static size_t readpack(void *data, size_t size, size_t nmemb, void *clientp) {
     return size * nmemb;
 }
 
+int read_length(std::string pack, int* pos) {
+    int length = 0; 
+    length = length | (pack[*pos] & 0x0F); // take the last 4 bits
+    if (pack[*pos] & 0x80) { // if the type bit starts with 0 then the last 4 bits are simply the length
+        (*pos)++;
+        while (pack[*pos] & 0x80) { // while leftmost bit is 1
+            length = length << 7;
+            length = length | (pack[*pos] & 0x7F); // flip first bit to 0 si it's ignored, then we append the other 7 bits to the integer
+            (*pos)++;
+        }
+        length = length << 7;
+        length = length | pack[*pos]; // set the leftmost bit to 1 so it's ignored, and do the same thing
+    }
+    (*pos)++;
+    return length;
+}
+
+unsigned char reverse(unsigned char b) {
+   b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+   b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+   b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+   return b;
+}
+
+int countSetBits(char ch) {
+    int count = 0;
+
+    for (int i = 0; i < 8; ++i) {
+        if ((ch & (1 << i)) != 0) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+std::string do_delta(std::string delta_contents, std::string base_contents) {
+    std::string object;
+    int deltapos = 0;
+    
+    read_length(delta_contents, &deltapos);
+    read_length(delta_contents, &deltapos);
+
+    while (deltapos < delta_contents.length()) {
+        unsigned char instruction = delta_contents[deltapos];
+        deltapos++;
+        if (instruction & 0x80) {
+            int datasize = 0;
+            int dataoffset = 0;
+            int bytes_read = 0;
+            for (int i = 3; i >= 0; i--) {
+                dataoffset = dataoffset << 8;
+                if (instruction & (1 << i)) {
+                    
+                    dataoffset += (unsigned char)delta_contents[deltapos + i];
+                    bytes_read++;
+                }
+            }
+            int size_bytes_read = 0;
+            for (int i = 6; i >= 4; i--) {
+                datasize = datasize << 8;
+                if (instruction & (1 << i)) {
+                    
+                    datasize += (unsigned char)delta_contents[deltapos + i - (4 - bytes_read)];
+                    size_bytes_read++;
+                }
+            }
+            if (datasize == 0) {
+                datasize = 0x10000;
+            }
+            object += base_contents.substr(dataoffset, datasize);
+            deltapos += bytes_read + size_bytes_read;
+
+        } else {
+            int datasize = instruction & 0x7F;
+            object += delta_contents.substr(deltapos, datasize);
+            deltapos += datasize;
+        }
+    }
+    return object;
+}
+
+void restoretree(std::string treehash, std::string dir, std::string projdir) {
+    std::ifstream mastertree(projdir + "/.git/objects/" + treehash.insert(2, "/"));
+    std::ostringstream buffer;
+    buffer << mastertree.rdbuf();
+    std::string tree_contents = decompress_string(buffer.str());
+    tree_contents = tree_contents.substr(tree_contents.find('\0') + 1);
+    int pos = 0;
+    while (pos < tree_contents.length()) {
+        if (tree_contents.find("40000", pos) == pos) {
+            pos += 6;
+            std::string path = tree_contents.substr(pos, tree_contents.find('\0', pos) - pos);
+            pos += path.length() + 1;
+            std::string nexthash = digesttohash(tree_contents.substr(pos, 20));
+            std::filesystem::create_directories(dir + '/' + path);
+            restoretree(nexthash, dir + '/' + path, projdir);
+
+            pos += 20;
+
+        } else {
+            pos += 7;
+            std::string path = tree_contents.substr(pos, tree_contents.find('\0', pos) - pos);
+            pos += path.length() + 1;
+            std::string nexthash = digesttohash(tree_contents.substr(pos, 20));
+            FILE* newfile = fopen((dir + '/' + path).c_str(), "w");
+            catfile(nexthash.c_str(), 1, projdir, newfile);
+            fclose(newfile);
+
+            pos += 20;
+        }
+    }
+}
 
 
 int clone(std::string url, std::string dir) {
-
-    url = "https://github.com/codecrafters-io/git-sample-3";
-
-
     std::filesystem::create_directories(dir);
     gitinit(dir);
 
     CURL* handle = curl_easy_init();
     curl_easy_setopt(handle, CURLOPT_URL, (url + "/info/refs?service=git-upload-pack").c_str());
     
-    std::vector<std::string> refs;
+    std::string packhash;
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, cb);
-    curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*) &refs);
+    curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*) &packhash);
     curl_easy_perform(handle);
 
     curl_easy_reset(handle);
     curl_easy_setopt(handle, CURLOPT_URL, (url + "/git-upload-pack").c_str());
     std::string postdata;
-    for (std::string s : refs) {
-        postdata += "0032want " + s + "\n";
-    }
+    postdata += "0032want " + packhash + "\n";
     postdata += "00000009done\n";
     curl_easy_setopt(handle, CURLOPT_POSTFIELDS, postdata.c_str());
 
@@ -295,34 +405,65 @@ int clone(std::string url, std::string dir) {
     int pos = 0;
     std::string lengthstr;
     int length;
-    std::vector<std::string> hashes;
+    std::string mastercommit;
+    // std::vector<std::string> hashes;
     for (int i = 0; i < num_objects; i++) {
-        length = 0;
         type = (pack[pos] & 112) >> 4; // 112 is 11100000 so this gets the first 3 bits
-        length = length | (pack[pos] & 0x0F); // take the last 4 bits
-        if (pack[pos] & 0x80) { // if the type bit starts with 0 then the last 4 bits are simply the length
-            pos++;
-            while (pack[pos] & 0x80) { // while leftmost bit is 1
-                length = length << 7;
-                length = length | (pack[pos] & 0x7F); // flip first bit to 0 si it's ignored, then we append the other 7 bits to the integer
-                pos++;
-            }
-            length = length << 7;
-            length = length | pack[pos]; // set the leftmost bit to 1 so it's ignored, and do the same thing
-        }
-        pos++;
         
-        if (type == 6) {
-
+        length = read_length(pack, &pos);
+        
+        if (type == 6) { // offset deltas not implemented
+            throw std::invalid_argument("Offset deltas not implemented.\n");
         } else if (type == 7) {
+            std::string digest = pack.substr(pos, 20);
+            std::string hash = digesttohash(digest);
+            std::ifstream file(dir + "/.git/objects/" + hash.insert(2, "/"));
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            std::string file_contents = buffer.str();
+            std::string base_contents = decompress_string(file_contents);
+            std::string objecttype = base_contents.substr(0, base_contents.find(" "));
+            base_contents = base_contents.substr(base_contents.find('\0') + 1);
             pos += 20;
-        }
-        std::string contents = decompress_string(pack.substr(pos));
-        std::cout << contents.length() << "\n";
-        std::string compressed = compress_string(contents)
-        pos += compressed.length();
-    }
+            
+            std::string delta_contents = decompress_string(pack.substr(pos));
+            
+            std::string object = do_delta(delta_contents, base_contents);
+            
+            object = objecttype + ' ' + std::to_string(object.length()) + '\0' + object;
+            std::string objecthash = gethash(object);
+            store(objecthash.c_str(), object, dir);
 
+            std::string compressed = compress_string(delta_contents);
+            pos += compressed.length();
+
+            if (hash.compare(packhash) == 0) {
+                mastercommit = object.substr(object.find('\0'));
+            }
+        } else {
+            std::string contents = decompress_string(pack.substr(pos));
+            pos += compress_string(contents).length();
+            int filelength = contents.length();
+            std::string typestr;
+            if (type == 1) {
+                typestr = "commit ";
+            } else if (type == 2) {
+                typestr = "tree ";
+            } else { // tags not implemented
+                typestr = "blob ";
+            }
+            contents = typestr + std::to_string(filelength) + '\0' + contents;
+            std::string compressed = compress_string(contents);
+            std::string hash = gethash(contents);
+            store(hash.c_str(), contents, dir);
+            if (hash.compare(packhash) == 0) {
+                mastercommit = contents.substr(contents.find('\0'));
+            }
+        }
+    }
+    
+    std::string treehash = mastercommit.substr(mastercommit.find("tree") + 5, 40);
+    restoretree(treehash, dir, dir);
     return EXIT_SUCCESS;
 }
 
@@ -343,7 +484,9 @@ int main(int argc, char* argv[]) {
             std::cerr << "Incorrect arguments.\n";
             return EXIT_FAILURE;
         }
-        return catfile(argv[3], 1);
+        FILE* stdout = fdopen(1, "w");
+        return catfile(argv[3], 1, ".", stdout);
+        fclose(stdout);
     } else if (command == "hash-object") {
         if (argc != 4 || strcmp(argv[2], "-w")) {
             std::cerr << "Incorrect arguments.\n";
